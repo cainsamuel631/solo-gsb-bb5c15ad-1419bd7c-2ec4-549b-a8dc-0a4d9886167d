@@ -1,0 +1,15 @@
+services:
+  audit:
+    build: .
+    image: license-audit:latest
+    container_name: license-audit
+    ports:
+      - "8000:8000"
+    volumes:
+      - audit-data:/data
+    environment:
+      AUDIT_DB_PATH: /data/licenses.db
+    restart: unless-stopped
+
+volumes:
+  audit-data:

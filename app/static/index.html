@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>许可证依赖冲突审计台</title>
+<style>
+  :root {
+    --bg: #f5f7fa; --card: #ffffff; --border: #e2e8f0; --text: #1e293b;
+    --muted: #64748b; --primary: #2563eb; --primary-hover: #1d4ed8;
+    --conflict: #dc2626; --conflict-bg: #fef2f2;
+    --review: #d97706; --review-bg: #fffbeb;
+    --ok: #16a34a; --ok-bg: #f0fdf4;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+                 "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    line-height: 1.55;
+  }
+  header {
+    background: linear-gradient(120deg, #1e3a8a, #2563eb);
+    color: #fff; padding: 20px 28px;
+  }
+  header h1 { margin: 0; font-size: 20px; font-weight: 600; }
+  header p { margin: 4px 0 0; opacity: .85; font-size: 13px; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 24px 20px 60px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 18px 20px; margin-bottom: 20px;
+  }
+  .card h2 { margin: 0 0 12px; font-size: 15px; font-weight: 600; }
+  textarea {
+    width: 100%; min-height: 220px; font-family: var(--mono); font-size: 12.5px;
+    border: 1px solid var(--border); border-radius: 8px; padding: 12px;
+    resize: vertical; background: #0f172a; color: #e2e8f0; tab-size: 2;
+  }
+  button {
+    background: var(--primary); color: #fff; border: none; border-radius: 8px;
+    padding: 9px 18px; font-size: 13.5px; cursor: pointer; font-weight: 500;
+  }
+  button:hover { background: var(--primary-hover); }
+  button.secondary { background: #e2e8f0; color: var(--text); }
+  button.secondary:hover { background: #cbd5e1; }
+  button.danger { background: #fee2e2; color: var(--conflict); }
+  button.danger:hover { background: #fecaca; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+  input[type=text], select {
+    border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px;
+    font-size: 13.5px; background: #fff; color: var(--text);
+  }
+  .hint { color: var(--muted); font-size: 12.5px; }
+  .stats { display: flex; gap: 12px; flex-wrap: wrap; }
+  .stat {
+    flex: 1; min-width: 120px; border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 14px; background: #f8fafc;
+  }
+  .stat .num { font-size: 22px; font-weight: 700; }
+  .stat .lbl { font-size: 12px; color: var(--muted); }
+  .stat.conflict .num { color: var(--conflict); }
+  .stat.review .num { color: var(--review); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; white-space: nowrap; }
+  tr:hover td { background: #f8fafc; }
+  .badge {
+    display: inline-block; padding: 2px 9px; border-radius: 999px;
+    font-size: 11.5px; font-weight: 600; white-space: nowrap;
+  }
+  .badge.conflict { background: var(--conflict-bg); color: var(--conflict); }
+  .badge.review, .badge.unknown { background: var(--review-bg); color: var(--review); }
+  .badge.ok, .badge.allow { background: var(--ok-bg); color: var(--ok); }
+  .path { font-family: var(--mono); font-size: 12px; }
+  .path .arrow { color: var(--muted); padding: 0 4px; }
+  .path .pkg { background: #f1f5f9; border-radius: 4px; padding: 1px 6px; }
+  .path .pkg.hit { background: #dbeafe; color: #1e40af; font-weight: 600; }
+  .lic { font-family: var(--mono); font-size: 12px; }
+  .reason { color: var(--muted); font-size: 12px; margin-top: 3px; }
+  .warn-box { background: var(--review-bg); border: 1px solid #fde68a; border-radius: 8px;
+              padding: 10px 14px; font-size: 12.5px; margin-bottom: 12px; }
+  .warn-box ul { margin: 6px 0 0; padding-left: 18px; }
+  .msg.error { background: var(--conflict-bg); border: 1px solid #fecaca; color: var(--conflict);
+               border-radius: 8px; padding: 10px 14px; font-size: 13px; white-space: pre-wrap; }
+  .hidden { display: none; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 14px; border-bottom: 1px solid var(--border); }
+  .tab { padding: 8px 16px; cursor: pointer; font-size: 13.5px; color: var(--muted);
+         border-bottom: 2px solid transparent; }
+  .tab.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
+  .hist-item { display: flex; justify-content: space-between; align-items: center;
+               padding: 10px 4px; border-bottom: 1px solid var(--border); font-size: 13px; gap: 10px; }
+  .hist-item a { color: var(--primary); text-decoration: none; font-weight: 500; cursor: pointer; }
+  .muted { color: var(--muted); }
+  code.inline { background: #f1f5f9; padding: 1px 6px; border-radius: 4px; font-family: var(--mono); font-size: 12px; }
+  .disclaimer { font-size: 12px; color: var(--muted); margin-top: 8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>许可证依赖冲突审计台</h1>
+  <p>上传 manifest · 传递许可证约束分析 · 最短冲突路径 · JSON 导出（兼容矩阵仅供工程参考，不构成法律意见）</p>
+</header>
+
+<div class="wrap">
+  <div class="card">
+    <h2>① 上传 Manifest（JSON）</h2>
+    <textarea id="payload" spellcheck="false"></textarea>
+    <div class="row">
+      <button id="btn-analyze">开始审计</button>
+      <label class="hint">或选择文件：
+        <input type="file" id="file" accept=".json,application/json">
+      </label>
+      <button class="secondary" id="btn-sample">填充示例</button>
+    </div>
+    <div id="upload-msg"></div>
+  </div>
+
+  <div id="result" class="hidden">
+    <div class="card">
+      <h2 id="result-title">② 审计结果</h2>
+      <div id="warnings"></div>
+      <div class="stats" id="stats"></div>
+      <div class="row">
+        <button id="btn-export">导出 JSON</button>
+        <button class="secondary" id="btn-download">下载为文件</button>
+        <span class="hint" style="margin-left:auto;">筛选：</span>
+        <input type="text" id="filter-pkg" placeholder="按包名筛选（如 libgpl）">
+        <select id="filter-scope">
+          <option value="any">出现在路径任意位置</option>
+          <option value="consumer">作为消费方</option>
+          <option value="dependency">作为被依赖方</option>
+          <option value="subtree">位于该包子树</option>
+        </select>
+        <select id="filter-severity">
+          <option value="all">全部结论</option>
+          <option value="conflict">仅冲突</option>
+          <option value="unknown">仅待人工确认</option>
+        </select>
+        <button class="secondary" id="btn-filter">应用筛选</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="tabs">
+        <div class="tab active" data-tab="findings">冲突 / 待确认（<span id="cnt-findings">0</span>）</div>
+        <div class="tab" data-tab="nodes">节点清单（<span id="cnt-nodes">0</span>）</div>
+        <div class="tab" data-tab="cycles">依赖环（<span id="cnt-cycles">0</span>）</div>
+        <div class="tab" data-tab="history">历史报告</div>
+      </div>
+
+      <div id="tab-findings">
+        <div style="overflow-x:auto;">
+          <table>
+            <thead>
+              <tr><th>结论</th><th>消费方</th><th>被依赖</th><th>最短依赖路径</th><th>说明</th></tr>
+            </thead>
+            <tbody id="findings-body"></tbody>
+          </table>
+        </div>
+        <div id="findings-empty" class="hint" style="padding:18px 4px;">未发现许可证冲突 🎉</div>
+      </div>
+
+      <div id="tab-nodes" class="hidden">
+        <div style="overflow-x:auto;">
+          <table>
+            <thead>
+              <tr><th>包</th><th>版本</th><th>许可证</th><th>类型</th><th>结论</th><th>传递依赖</th><th>标记</th></tr>
+            </thead>
+            <tbody id="nodes-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="tab-cycles" class="hidden">
+        <div id="cycles-body" class="path"></div>
+        <div id="cycles-empty" class="hint" style="padding:18px 4px;">未检测到依赖环。</div>
+      </div>
+
+      <div id="tab-history" class="hidden">
+        <div id="history-body"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const SAMPLE = {
+  name: "example-product",
+  nodes: [
+    {name: "app",        version: "3.1.0", license: "Proprietary"},
+    {name: "web-ui",     version: "1.4.0", license: "MIT"},
+    {name: "crypto-lib", version: "2.0.1", license: "Apache-2.0"},
+    {name: "gpl-tool",   version: "0.9.0", license: "GPL-3.0"},
+    {name: "gpl2-util",  version: "1.0.0", license: "GPL-2.0"},
+    {name: "legacy-x",   version: "0.3.0", license: "LGPL-2.1"},
+    {name: "mystery",    version: "0.0.7", license: "WeirdOSL-1.0"},
+    {name: "ring-a",     version: "1.0.0", license: "MIT"},
+    {name: "ring-b",     version: "1.0.0", license: "MIT"}
+  ],
+  edges: [
+    {from: "app", to: ["web-ui", "crypto-lib", "gpl-tool", "mystery"]},
+    {from: "web-ui", to: ["gpl-tool"]},
+    {from: "crypto-lib", to: ["gpl2-util"]},
+    {from: "gpl-tool", to: ["legacy-x"]},
+    {from: "ring-a", to: ["ring-b"]},
+    {from: "ring-b", to: ["ring-a"]}
+  ]
+};
+
+let currentId = null;
+let currentReport = null;
+let currentFilter = {package: "", severity: "all", scope: "any"};
+
+const $ = (id) => document.getElementById(id);
+
+$("btn-sample").onclick = () => {
+  $("payload").value = JSON.stringify(SAMPLE, null, 2);
+};
+$("file").onchange = async (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  $("payload").value = await f.text();
+};
+
+function showError(text) {
+  $("upload-msg").innerHTML = `<div class="msg error">${escapeHtml(text)}</div>`;
+}
+function clearMsg() { $("upload-msg").innerHTML = ""; }
+
+async function analyze() {
+  clearMsg();
+  let payload;
+  try {
+    payload = JSON.parse($("payload").value);
+  } catch (err) {
+    showError("JSON 解析失败：" + err.message);
+    return;
+  }
+  $("btn-analyze").disabled = true;
+  try {
+    const resp = await fetch("/api/manifests", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(payload)
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      showError("请求失败 (" + resp.status + ")：\n" + (data.detail || JSON.stringify(data)));
+      return;
+    }
+    currentId = data.id;
+    currentReport = data.report;
+    render(data.manifest, data.report);
+  } catch (err) {
+    showError("网络错误：" + err.message);
+  } finally {
+    $("btn-analyze").disabled = false;
+  }
+}
+$("btn-analyze").onclick = analyze;
+
+function escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => (
+    {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]
+  ));
+}
+
+function render(manifest, report) {
+  $("result").classList.remove("hidden");
+  $("result-title").textContent = `② 审计结果 — ${manifest.name}`;
+
+  // warnings
+  let wh = "";
+  if ((report.warnings || []).length) {
+    wh = `<div class="warn-box"><strong>规范化警告（${report.warnings.length}）</strong><ul>` +
+         report.warnings.map((w) => `<li>${escapeHtml(w)}</li>`).join("") + "</ul></div>";
+  }
+  $("warnings").innerHTML = wh;
+
+  const s = report.summary;
+  $("stats").innerHTML = [
+    ["total_nodes", s.total_nodes, "节点"],
+    ["total_edges", s.total_edges, "依赖边"],
+    ["conflict", s.conflicts, "冲突"],
+    ["review", s.unknown, "待人工确认"],
+    ["", s.cycles, "依赖环"],
+    ["", s.warnings, "警告"]
+  ].map(([cls, num, lbl]) =>
+    `<div class="stat ${cls}"><div class="num">${num}</div><div class="lbl">${lbl}</div></div>`
+  ).join("");
+
+  currentFilter = {
+    package: $("filter-pkg").value.trim(),
+    severity: $("filter-severity").value,
+    scope: $("filter-scope").value
+  };
+  renderFindings(report.findings);
+  renderNodes(report.nodes);
+  renderCycles(report.cycles);
+  loadHistory();
+}
+
+function badgeHtml(verdict) {
+  const map = {conflict: ["conflict", "冲突"], unknown: ["review", "待确认"], allow: ["ok", "兼容"]};
+  const [cls, label] = map[verdict] || ["review", verdict];
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+
+function pathHtml(path) {
+  const hit = currentFilter.package.toLowerCase();
+  return path.map((p) => {
+    const cls = "pkg" + (hit && p.toLowerCase() === hit ? " hit" : "");
+    return `<span class="${cls}">${escapeHtml(p)}</span>`;
+  }).join('<span class="arrow">→</span>');
+}
+
+function renderFindings(findings) {
+  $("cnt-findings").textContent = findings.length;
+  const body = $("findings-body");
+  body.innerHTML = findings.map((f) => `
+    <tr>
+      <td>${badgeHtml(f.verdict)}</td>
+      <td><strong>${escapeHtml(f.consumer)}</strong><br>
+          <span class="lic muted">${escapeHtml(f.consumer_license || "未知")}</span></td>
+      <td><strong>${escapeHtml(f.dependency)}</strong><br>
+          <span class="lic muted">${escapeHtml(f.dependency_license || "未知")}</span>
+          ${f.transitive ? '<br><span class="badge review">传递</span>' : '<br><span class="badge ok">直接</span>'}</td>
+      <td class="path">${pathHtml(f.path)}
+          <div class="reason">距离 ${f.distance} 跳</div></td>
+      <td class="reason" style="max-width:320px;">${escapeHtml(f.reason || "")}</td>
+    </tr>`).join("");
+  $("findings-empty").classList.toggle("hidden", findings.length > 0);
+}
+
+function renderNodes(nodes) {
+  $("cnt-nodes").textContent = nodes.length;
+  $("nodes-body").innerHTML = nodes.map((n) => `
+    <tr>
+      <td><strong>${escapeHtml(n.name)}</strong>
+          ${n.is_root ? ' <span class="badge ok">根</span>' : ""}
+          ${n.implicit ? ' <span class="badge review">隐式</span>' : ""}</td>
+      <td class="lic">${escapeHtml(n.version || "-")}</td>
+      <td class="lic">${escapeHtml(n.license || (n.license_raw ? n.license_raw : "未声明"))}
+          ${!n.license_recognized ? ' <span class="badge review">未识别</span>' : ""}</td>
+      <td>${escapeHtml(n.category || "-")}</td>
+      <td>${badgeHtml(n.verdict)}</td>
+      <td class="hint">${n.depends_on.length ? escapeHtml(n.depends_on.join(", ")) : "-"}</td>
+      <td>${n.in_cycle ? '<span class="badge conflict">在环中</span>' : ""}
+          ${n.conflict_count ? `<span class="badge conflict">${n.conflict_count} 冲突</span>` : ""}
+          ${n.unknown_count ? `<span class="badge review">${n.unknown_count} 待确认</span>` : ""}</td>
+    </tr>`).join("");
+}
+
+function renderCycles(cycles) {
+  $("cnt-cycles").textContent = cycles.length;
+  $("cycles-body").innerHTML = cycles.map((c) =>
+    `<div style="padding:8px 0;"><span class="badge conflict">依赖环</span> ` +
+    c.map((p) => `<span class="pkg">${escapeHtml(p)}</span>`)
+      .join('<span class="arrow">→</span>') +
+    `<span class="arrow">→</span><span class="pkg">${escapeHtml(c[0])}</span></div>`
+  ).join("");
+  $("cycles-empty").classList.toggle("hidden", cycles.length > 0);
+}
+
+async function applyFilter() {
+  if (!currentId) return;
+  currentFilter = {
+    package: $("filter-pkg").value.trim(),
+    severity: $("filter-severity").value,
+    scope: $("filter-scope").value
+  };
+  const params = new URLSearchParams();
+  if (currentFilter.package) params.set("package", currentFilter.package);
+  if (currentFilter.severity !== "all") params.set("severity", currentFilter.severity);
+  if (currentFilter.scope !== "any") params.set("scope", currentFilter.scope);
+  const resp = await fetch(`/api/manifests/${currentId}/findings?` + params);
+  const data = await resp.json();
+  renderFindings(data.findings || []);
+}
+$("btn-filter").onclick = applyFilter;
+$("filter-pkg").addEventListener("keydown", (e) => { if (e.key === "Enter") applyFilter(); });
+
+function exportUrl(download) {
+  const params = new URLSearchParams();
+  if (currentFilter.package) params.set("package", currentFilter.package);
+  if (currentFilter.severity !== "all") params.set("severity", currentFilter.severity);
+  if (currentFilter.scope !== "any") params.set("scope", currentFilter.scope);
+  if (download) params.set("download", "true");
+  return `/api/manifests/${currentId}/export?` + params;
+}
+$("btn-export").onclick = () => window.open(exportUrl(false), "_blank");
+$("btn-download").onclick = () => window.location.href = exportUrl(true);
+
+// tabs
+document.querySelectorAll(".tab").forEach((tab) => {
+  tab.onclick = () => {
+    document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
+    tab.classList.add("active");
+    ["findings", "nodes", "cycles", "history"].forEach((name) => {
+      $("tab-" + name).classList.toggle("hidden", name !== tab.dataset.tab);
+    });
+    if (tab.dataset.tab === "history") loadHistory();
+  };
+});
+
+async function loadHistory() {
+  const resp = await fetch("/api/manifests?limit=20");
+  const data = await resp.json();
+  if (!data.items.length) {
+    $("history-body").innerHTML = '<div class="hint" style="padding:14px 4px;">暂无历史报告。</div>';
+    return;
+  }
+  $("history-body").innerHTML = data.items.map((m) => `
+    <div class="hist-item">
+      <div>
+        <a onclick="loadById(${m.id})">#${m.id} ${escapeHtml(m.name)}</a>
+        <span class="muted"> · ${escapeHtml(m.created_at)} · ${m.node_count} 节点 / ${m.edge_count} 边</span>
+      </div>
+      <div>
+        ${m.conflict_count ? `<span class="badge conflict">${m.conflict_count} 冲突</span> ` : ""}
+        ${m.unknown_count ? `<span class="badge review">${m.unknown_count} 待确认</span> ` : ""}
+        ${m.cycle_count ? `<span class="badge conflict">${m.cycle_count} 环</span> ` : ""}
+        <button class="secondary" onclick="loadById(${m.id})">查看</button>
+        <button class="danger" onclick="removeById(${m.id})">删除</button>
+      </div>
+    </div>`).join("");
+}
+
+async function loadById(id) {
+  const resp = await fetch(`/api/manifests/${id}`);
+  if (!resp.ok) return;
+  const data = await resp.json();
+  currentId = data.id;
+  currentReport = data.report;
+  render(data.manifest, data.report);
+  window.scrollTo({top: $("result").offsetTop - 10, behavior: "smooth"});
+}
+
+async function removeById(id) {
+  if (!confirm(`确认删除报告 #${id}？`)) return;
+  await fetch(`/api/manifests/${id}`, {method: "DELETE"});
+  if (id === currentId) {
+    currentId = null;
+    $("result").classList.add("hidden");
+  }
+  loadHistory();
+}
+window.loadById = loadById;
+window.removeById = removeById;
+
+loadHistory();
+</script>
+</body>
+</html>

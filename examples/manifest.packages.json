@@ -1,0 +1,19 @@
+{
+  "name": "packages-style-example",
+  "packages": [
+    {
+      "name": "backend",
+      "version": "0.1.0",
+      "license": "Apache-2.0",
+      "dependencies": [
+        "json-kit",
+        {"name": "gpl-parser", "version": "3.3.0", "license": "GPL-3.0"}
+      ]
+    },
+    {"name": "json-kit", "version": "9.0.1", "license": "MIT", "dependencies": []},
+    {
+      "name": "gpl-parser",
+      "dependencies": ["json-kit", {"name": "undocumented-helper"}]
+    }
+  ]
+}

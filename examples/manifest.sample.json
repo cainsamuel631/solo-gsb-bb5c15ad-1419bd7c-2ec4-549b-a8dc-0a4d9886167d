@@ -1,0 +1,22 @@
+{
+  "name": "example-product",
+  "nodes": [
+    {"name": "app",        "version": "3.1.0", "license": "Proprietary"},
+    {"name": "web-ui",     "version": "1.4.0", "license": "MIT"},
+    {"name": "crypto-lib", "version": "2.0.1", "license": "Apache-2.0"},
+    {"name": "gpl-tool",   "version": "0.9.0", "license": "GPL-3.0"},
+    {"name": "gpl2-util",  "version": "1.0.0", "license": "GPL-2.0"},
+    {"name": "legacy-x",   "version": "0.3.0", "license": "LGPL-2.1"},
+    {"name": "mystery",    "version": "0.0.7", "license": "WeirdOSL-1.0"},
+    {"name": "ring-a",     "version": "1.0.0", "license": "MIT"},
+    {"name": "ring-b",     "version": "1.0.0", "license": "MIT"}
+  ],
+  "edges": [
+    {"from": "app", "to": ["web-ui", "crypto-lib", "gpl-tool", "mystery"]},
+    {"from": "web-ui", "to": ["gpl-tool"]},
+    {"from": "crypto-lib", "to": ["gpl2-util"]},
+    {"from": "gpl-tool", "to": ["legacy-x"]},
+    {"from": "ring-a", "to": ["ring-b"]},
+    {"from": "ring-b", "to": ["ring-a"]}
+  ]
+}
