@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>许可证依赖冲突审计台</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡️</text></svg>">
+<style>
+  :root {
+    --bg: #f5f7fa; --card: #ffffff; --ink: #1f2933; --muted: #697586;
+    --line: #e4e9f0; --brand: #2b5cb8; --brand-dark: #1e4280;
+    --ok: #1a7f4b; --ok-bg: #e6f6ee;
+    --err: #c02b2b; --err-bg: #fdecec;
+    --warn: #9a6a00; --warn-bg: #fdf4dd;
+    --info: #2b5cb8; --info-bg: #eaf1fc;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 14px/1.6 -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  header.top {
+    background: linear-gradient(120deg, var(--brand-dark), var(--brand));
+    color: #fff; padding: 22px 28px;
+  }
+  header.top h1 { margin: 0; font-size: 22px; font-weight: 700; }
+  header.top p { margin: 6px 0 0; opacity: .85; font-size: 13px; }
+  header.top a { color: #fff; text-decoration: underline; margin-left: 14px; }
+  main { max-width: 1120px; margin: 24px auto; padding: 0 20px 60px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+          padding: 20px; margin-bottom: 18px; }
+  .card h2 { margin: 0 0 14px; font-size: 16px; }
+  textarea {
+    width: 100%; min-height: 220px; border: 1px solid var(--line); border-radius: 8px;
+    padding: 12px; font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    resize: vertical;
+  }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+  button {
+    border: 0; border-radius: 7px; padding: 9px 16px; font-size: 13px; cursor: pointer;
+    background: var(--brand); color: #fff; font-weight: 600;
+  }
+  button.secondary { background: #eef2f8; color: var(--brand-dark); border: 1px solid var(--line); }
+  button:disabled { opacity: .55; cursor: default; }
+  input[type=text] {
+    border: 1px solid var(--line); border-radius: 7px; padding: 8px 12px; font-size: 13px;
+    min-width: 240px;
+  }
+  .hint { color: var(--muted); font-size: 12px; }
+  .alert { border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; font-size: 13px; display: none; }
+  .alert.show { display: block; }
+  .alert.error { background: var(--err-bg); color: var(--err); border: 1px solid #f3c2c2; }
+  .stats { display: flex; gap: 12px; flex-wrap: wrap; }
+  .stat { flex: 1 1 120px; background: #f8fafc; border: 1px solid var(--line);
+          border-radius: 8px; padding: 12px 14px; }
+  .stat .num { font-size: 22px; font-weight: 700; }
+  .stat .label { color: var(--muted); font-size: 12px; }
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .badge.conflict { background: var(--err-bg); color: var(--err); }
+  .badge.warning  { background: var(--warn-bg); color: var(--warn); }
+  .badge.clean    { background: var(--ok-bg); color: var(--ok); }
+  .badge.cat-permissive { background: var(--ok-bg); color: var(--ok); }
+  .badge.cat-weak-copyleft { background: #ecf7e6; color: #4a7d14; }
+  .badge.cat-strong-copyleft { background: var(--err-bg); color: var(--err); }
+  .badge.cat-proprietary { background: #f3ecfd; color: #6b32b8; }
+  .badge.cat-unknown { background: var(--warn-bg); color: var(--warn); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; }
+  tr.hidden { display: none; }
+  .conflict { border: 1px solid var(--line); border-left-width: 4px; border-radius: 8px;
+              padding: 12px 16px; margin-bottom: 10px; background: #fcfdff; }
+  .conflict.error { border-left-color: var(--err); }
+  .conflict.warning { border-left-color: #d9a413; }
+  .conflict .head { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .conflict .reason { color: var(--muted); margin: 6px 0 8px; }
+  .path { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px;
+          background: #f4f7fb; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px;
+          overflow-x: auto; white-space: nowrap; }
+  .path b { color: var(--err); }
+  .path .arrow { color: var(--muted); padding: 0 4px; }
+  .mono { font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .muted { color: var(--muted); }
+  details { margin-top: 8px; }
+  summary { cursor: pointer; color: var(--brand); font-size: 13px; }
+  .hidden-block { display: none; }
+  .pill { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: #eef2f8; color: var(--muted); }
+  mark { background: #fff1a8; border-radius: 3px; padding: 0 2px; }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>🛡️ 许可证依赖冲突审计台</h1>
+  <p>规范化依赖节点 · 按许可证兼容矩阵计算传递约束 · 标出冲突的最短依赖路径 · 支持按包筛选与 JSON 导出
+    <a href="/docs" target="_blank">API 文档</a><a href="/api/matrix" target="_blank">兼容矩阵</a>
+  </p>
+</header>
+
+<main>
+  <section class="card">
+    <h2>1. 上传或粘贴 manifest</h2>
+    <div id="alert" class="alert"></div>
+    <textarea id="input" spellcheck="false" placeholder='{"name":"my-app","packages":[{"name":"app","version":"1.0","license":"GPL-3.0","dependencies":["lib@1.0"]}],"edges":[...]}'></textarea>
+    <div class="row">
+      <button id="btn-audit">开始审计</button>
+      <label class="secondary" style="border:1px solid var(--line);border-radius:7px;padding:9px 16px;cursor:pointer;background:#eef2f8;color:var(--brand-dark);font-weight:600;font-size:13px;">
+        选择 JSON 文件
+        <input id="file" type="file" accept=".json,application/json" style="display:none">
+      </label>
+      <button class="secondary" id="btn-sample">载入示例</button>
+      <span class="hint">依赖边方向：使用方 → 被依赖方；支持 packages / dependencies / edges 混合声明。</span>
+    </div>
+  </section>
+
+  <section id="result" class="hidden-block">
+    <div class="card">
+      <div class="row" style="justify-content:space-between;">
+        <h2 style="margin:0;">2. 审计结果 <span id="r-name" class="muted" style="font-weight:400;font-size:13px;"></span></h2>
+        <span id="r-status"></span>
+      </div>
+      <div class="stats" style="margin-top:14px;">
+        <div class="stat"><div class="num" id="s-pkgs">0</div><div class="label">规范化节点</div></div>
+        <div class="stat"><div class="num" id="s-edges">0</div><div class="label">依赖边</div></div>
+        <div class="stat"><div class="num" id="s-conf" style="color:var(--err)">0</div><div class="label">硬冲突</div></div>
+        <div class="stat"><div class="num" id="s-warn" style="color:var(--warn)">0</div><div class="label">许可证告警</div></div>
+        <div class="stat"><div class="num" id="s-unres" style="color:var(--muted)">0</div><div class="label">未解析依赖</div></div>
+      </div>
+      <div class="row" style="margin-top:16px;">
+        <input type="text" id="filter" placeholder="按包名筛选，如 pdf-export 或 gpl（匹配冲突路径上的任意节点）">
+        <button class="secondary" id="btn-filter">筛选</button>
+        <button class="secondary" id="btn-clear">清除</button>
+        <span style="flex:1"></span>
+        <button class="secondary" id="btn-export">⬇ 导出 JSON</button>
+      </div>
+      <div id="filter-note" class="hint" style="margin-top:8px;"></div>
+    </div>
+
+    <div class="card">
+      <h2>3. 冲突与最短依赖路径</h2>
+      <div id="conflicts"></div>
+    </div>
+
+    <div class="card">
+      <h2>4. 节点与传递约束</h2>
+      <div style="overflow-x:auto;">
+      <table id="nodes-table">
+        <thead><tr><th>节点</th><th>版本</th><th>许可证</th><th>约束来源（传递）</th><th>硬冲突</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>5. 告警与未解析依赖</h2>
+      <div id="warnings"></div>
+    </div>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let currentResult = null;
+let currentFilter = "";
+
+function showAlert(msg) {
+  const el = $("alert");
+  el.textContent = msg;
+  el.className = "alert error show";
+}
+function clearAlert() { $("alert").className = "alert"; }
+
+function esc(s) {
+  return String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+}
+function catClass(cat) { return "badge cat-" + cat; }
+
+async function doAudit(manifest, name) {
+  clearAlert();
+  const body = { manifest: manifest };
+  if (name) body.name = name;
+  const resp = await fetch("/api/audit", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(body),
+  });
+  const data = await resp.json();
+  if (!resp.ok) {
+    showAlert(typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail));
+    return null;
+  }
+  return data;
+}
+
+function renderPath(path) {
+  const needle = currentFilter.trim().toLowerCase();
+  return path.map((nid) => {
+    const node = (currentResult.nodes || []).find((n) => n.id === nid);
+    const lic = node ? node.license_display : "";
+    let label = esc(nid) + (lic ? ' <span class="muted">[' + esc(lic) + ']</span>' : "");
+    if (needle && nid.toLowerCase().includes(needle)) label = "<mark>" + label + "</mark>";
+    return label;
+  }).join('<span class="arrow">→</span>');
+}
+
+function render(result) {
+  currentResult = result;
+  $("result").className = "";
+  $("r-name").textContent = "— " + result.manifest_name + "（#" + result.audit_id + "，" + (result.created_at || "") + "）";
+  const s = result.summary;
+  $("s-pkgs").textContent = s.packages;
+  $("s-edges").textContent = s.edges;
+  $("s-conf").textContent = s.conflicts;
+  $("s-warn").textContent = s.license_warnings;
+  $("s-unres").textContent = s.unresolved;
+  const statusEl = $("r-status");
+  if (result.status === "conflict") {
+    statusEl.innerHTML = '<span class="badge conflict">发现硬冲突</span>';
+  } else if (result.status === "warning") {
+    statusEl.innerHTML = '<span class="badge warning">存在告警</span>';
+  } else {
+    statusEl.innerHTML = '<span class="badge clean">未发现冲突</span>';
+  }
+  renderConflicts(result);
+  renderNodes(result);
+  renderWarnings(result);
+  $("filter-note").textContent = "";
+}
+
+function renderConflicts(result) {
+  const box = $("conflicts");
+  if (!result.conflicts.length) {
+    box.innerHTML = '<p class="muted">当前筛选范围内未发现许可证冲突。</p>';
+    return;
+  }
+  box.innerHTML = result.conflicts.map((c) => `
+    <div class="conflict ${c.severity}">
+      <div class="head">
+        <span class="badge ${c.severity === "error" ? "conflict" : "warning"}">${c.severity === "error" ? "硬冲突" : "需人工确认"}</span>
+        <span class="mono"><b>${esc(c.ancestor)}</b> ── ${esc(c.ancestor_license)} → ${esc(c.node_license)} ── <b>${esc(c.node)}</b></span>
+        <span class="pill">最短路径 ${c.distance} 跳 · ${c.id}</span>
+      </div>
+      <div class="reason">${esc(c.reason)}</div>
+      <div class="path">${renderPath(c.path)}</div>
+    </div>`).join("");
+}
+
+function renderNodes(result) {
+  const tbody = $("nodes-table").querySelector("tbody");
+  if (!result.nodes.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="muted">当前筛选范围内没有节点。</td></tr>';
+    return;
+  }
+  tbody.innerHTML = result.nodes.map((n) => {
+    const cons = (n.constraints || []).map((c) =>
+      `<div class="mono" style="font-size:12px;">${esc(c.from)} <span class="muted">(${esc(c.license)}, ${c.distance} 跳)</span></div>`
+    ).join("") || '<span class="muted">无</span>';
+    return `<tr>
+      <td class="mono">${esc(n.name)}</td>
+      <td class="mono">${n.version_unspecified ? '<span class="muted">未指定</span>' : esc(n.version)}</td>
+      <td><span class="badge ${catClass(n.license_category)}">${esc(n.license_display)}</span></td>
+      <td>${cons}</td>
+      <td>${n.conflict_count ? '<b style="color:var(--err)">' + n.conflict_count + '</b>' : '0'}</td>
+    </tr>`;
+  }).join("");
+}
+
+function renderWarnings(result) {
+  const box = $("warnings");
+  const items = [];
+  (result.warnings || []).forEach((w) => items.push(w));
+  if (!items.length) {
+    box.innerHTML = '<p class="muted">无告警，所有依赖引用均已解析。</p>';
+    return;
+  }
+  box.innerHTML = '<ul style="margin:0;padding-left:20px;">' +
+    items.map((w) => "<li>" + esc(w) + "</li>").join("") + "</ul>";
+}
+
+async function applyFilter() {
+  if (!currentResult) return;
+  const pkg = $("filter").value.trim();
+  currentFilter = pkg;
+  const url = "/api/audits/" + currentResult.audit_id + (pkg ? "?package=" + encodeURIComponent(pkg) : "");
+  const resp = await fetch(url);
+  const data = await resp.json();
+  if (!resp.ok) { showAlert(data.detail || "筛选失败"); return; }
+  renderConflicts(data);
+  renderNodes(data);
+  renderWarnings(data);
+  $("filter-note").textContent = pkg
+    ? "已按「" + pkg + "」筛选：命中 " + data.nodes.length + " 个节点、" +
+      data.conflicts.length + " 个冲突（包含路径上经过该包的冲突）。导出 JSON 将使用同样筛选条件。"
+    : "";
+}
+
+$("btn-audit").addEventListener("click", async () => {
+  const text = $("input").value.trim();
+  if (!text) { showAlert("请粘贴 manifest JSON 或上传文件。"); return; }
+  let manifest;
+  try { manifest = JSON.parse(text); }
+  catch (e) { showAlert("JSON 解析失败：" + e.message); return; }
+  $("btn-audit").disabled = true;
+  const result = await doAudit(manifest, manifest.name);
+  $("btn-audit").disabled = false;
+  if (result) { currentFilter = ""; $("filter").value = ""; render(result); }
+});
+
+$("file").addEventListener("change", () => {
+  const file = $("file").files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => { $("input").value = reader.result; clearAlert(); };
+  reader.readAsText(file);
+});
+
+$("btn-sample").addEventListener("click", async () => {
+  const data = await (await fetch("/api/sample")).json();
+  $("input").value = JSON.stringify(data, null, 2);
+  clearAlert();
+});
+
+$("btn-filter").addEventListener("click", applyFilter);
+$("filter").addEventListener("keydown", (e) => { if (e.key === "Enter") applyFilter(); });
+$("btn-clear").addEventListener("click", () => {
+  $("filter").value = ""; currentFilter = "";
+  if (currentResult) { render(currentResult); }
+});
+
+$("btn-export").addEventListener("click", () => {
+  if (!currentResult) return;
+  const pkg = $("filter").value.trim();
+  const url = "/api/audits/" + currentResult.audit_id + "?download=true" +
+    (pkg ? "&package=" + encodeURIComponent(pkg) : "");
+  window.location.href = url;
+});
+
+// 自动载入示例，便于首次访问
+$("btn-sample").click();
+</script>
+</body>
+</html>
